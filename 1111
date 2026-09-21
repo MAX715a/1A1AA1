@@ -1,0 +1,445 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- متغيرات التحكم
+local Waypoints = {}
+local WaypointCount = 0
+local Flying = false
+local FlySpeed = 50
+local PathSpeed = 40
+local NoClip = false
+local PathTesting = false
+local ClickToWay = false
+
+-- إنشاء الواجهة
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MassiveWaypointSystem_Vector3"
+ScreenGui.ResetOnSpawn = false
+
+if gethui then
+    ScreenGui.Parent = gethui()
+elseif syn and syn.protect_gui then
+    syn.protect_gui(ScreenGui)
+    ScreenGui.Parent = CoreGui
+else
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- الإطار الرئيسي
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 330, 0, 540)
+MainFrame.Position = UDim2.new(0.05, 0, 0.12, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local TitleBar = Instance.new("TextLabel")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+TitleBar.Text = "⚡ مدير الإحداثيات والمسارات ⚡"
+TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleBar.TextSize = 14
+TitleBar.Font = Enum.Font.SourceSansBold
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = TitleBar
+
+-- حاوية الأزرار الرئيسية
+local ControlsFrame = Instance.new("Frame")
+ControlsFrame.Size = UDim2.new(1, -20, 0, 115)
+ControlsFrame.Position = UDim2.new(0, 10, 0, 48)
+ControlsFrame.BackgroundTransparency = 1
+ControlsFrame.Parent = MainFrame
+
+local Grid = Instance.new("UIGridLayout")
+Grid.CellSize = UDim2.new(0, 150, 0, 32)
+Grid.CellPadding = UDim2.new(0, 10, 0, 6)
+Grid.Parent = ControlsFrame
+
+local function createButton(text, color, parent)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundColor3 = color
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.SourceSansBold
+    btn.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+    
+    return btn
+end
+
+local AddBtn = createButton("➕ إضافة موقعي", Color3.fromRGB(45, 125, 210), ControlsFrame)
+local ClickAddBtn = createButton("🖱️ إضافة بنقرة", Color3.fromRGB(130, 60, 200), ControlsFrame)
+local FlyBtn = createButton("🕊️ طيران حر", Color3.fromRGB(55, 55, 65), ControlsFrame)
+local NoclipBtn = createButton("🧱 اختراق الجدران", Color3.fromRGB(55, 55, 65), ControlsFrame)
+local PathBtn = createButton("▶️ تشغيل المسار", Color3.fromRGB(55, 55, 65), ControlsFrame)
+local CopyBtn = createButton("📋 نسخ بصيغة Vector3", Color3.fromRGB(40, 150, 90), ControlsFrame)
+
+-- إطار خيارات السرعة
+local SpeedFrame = Instance.new("Frame")
+SpeedFrame.Size = UDim2.new(1, -20, 0, 75)
+SpeedFrame.Position = UDim2.new(0, 10, 0, 170)
+SpeedFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+SpeedFrame.Parent = MainFrame
+
+local SpeedCorner = Instance.new("UICorner")
+SpeedCorner.CornerRadius = UDim.new(0, 6)
+SpeedCorner.Parent = SpeedFrame
+
+local FlyLabel = Instance.new("TextLabel")
+FlyLabel.Size = UDim2.new(1, -10, 0, 18)
+FlyLabel.Position = UDim2.new(0, 5, 0, 4)
+FlyLabel.BackgroundTransparency = 1
+FlyLabel.Text = "سرعة الطيران: " .. FlySpeed
+FlyLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+FlyLabel.TextSize = 11
+FlyLabel.Font = Enum.Font.SourceSansBold
+FlyLabel.Parent = SpeedFrame
+
+local FlySlider = Instance.new("TextButton")
+FlySlider.Size = UDim2.new(0.9, 0, 0, 10)
+FlySlider.Position = UDim2.new(0.05, 0, 0, 24)
+FlySlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+FlySlider.Text = ""
+FlySlider.Parent = SpeedFrame
+
+local FlyFill = Instance.new("Frame")
+FlyFill.Size = UDim2.new(FlySpeed / 200, 0, 1, 0)
+FlyFill.BackgroundColor3 = Color3.fromRGB(45, 125, 210)
+FlyFill.BorderSizePixel = 0
+FlyFill.Parent = FlySlider
+
+local PathLabel = Instance.new("TextLabel")
+PathLabel.Size = UDim2.new(1, -10, 0, 18)
+PathLabel.Position = UDim2.new(0, 5, 0, 40)
+PathLabel.BackgroundTransparency = 1
+PathLabel.Text = "سرعة المسار: " .. PathSpeed
+PathLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+PathLabel.TextSize = 11
+PathLabel.Font = Enum.Font.SourceSansBold
+PathLabel.Parent = SpeedFrame
+
+local PathSlider = Instance.new("TextButton")
+PathSlider.Size = UDim2.new(0.9, 0, 0, 10)
+PathSlider.Position = UDim2.new(0.05, 0, 0, 58)
+PathSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+PathSlider.Text = ""
+PathSlider.Parent = SpeedFrame
+
+local PathFill = Instance.new("Frame")
+PathFill.Size = UDim2.new(PathSpeed / 150, 0, 1, 0)
+PathFill.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+PathFill.BorderSizePixel = 0
+PathFill.Parent = PathSlider
+
+-- قائمة الإحداثيات
+local ScrollList = Instance.new("ScrollingFrame")
+ScrollList.Size = UDim2.new(1, -20, 0, 275)
+ScrollList.Position = UDim2.new(0, 10, 0, 255)
+ScrollList.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+ScrollList.BorderSizePixel = 0
+ScrollList.ScrollBarThickness = 4
+ScrollList.Parent = MainFrame
+
+local ScrollCorner = Instance.new("UICorner")
+ScrollCorner.CornerRadius = UDim.new(0, 8)
+ScrollCorner.Parent = ScrollList
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 4)
+ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ScrollList
+
+-- تحكم السلايدر للسرعات
+local draggingFly = false
+FlySlider.MouseButton1Down:Connect(function() draggingFly = true end)
+
+local draggingPath = false
+PathSlider.MouseButton1Down:Connect(function() draggingPath = true end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingFly = false
+        draggingPath = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if draggingFly then
+            local relativeX = math.clamp(input.Position.X - FlySlider.AbsolutePosition.X, 0, FlySlider.AbsoluteSize.X)
+            local scale = relativeX / FlySlider.AbsoluteSize.X
+            FlySpeed = math.floor(scale * 200)
+            if FlySpeed < 10 then FlySpeed = 10 end
+            FlyFill.Size = UDim2.new(scale, 0, 1, 0)
+            FlyLabel.Text = "سرعة الطيران: " .. FlySpeed
+        elseif draggingPath then
+            local relativeX = math.clamp(input.Position.X - PathSlider.AbsolutePosition.X, 0, PathSlider.AbsoluteSize.X)
+            local scale = relativeX / PathSlider.AbsoluteSize.X
+            PathSpeed = math.floor(scale * 150)
+            if PathSpeed < 5 then PathSpeed = 5 end
+            PathFill.Size = UDim2.new(scale, 0, 1, 0)
+            PathLabel.Text = "سرعة المسار: " .. PathSpeed
+        end
+    end
+end)
+
+-- ترقيم السطور المضافة
+local function refreshIndices()
+    for index, entry in ipairs(Waypoints) do
+        entry.Name = "إحداثية رقم " .. index
+        if entry.Tag then entry.Tag.Text = entry.Name end
+        if entry.NameLabel then entry.NameLabel.Text = entry.Name end
+        if entry.Frame then entry.Frame.LayoutOrder = index end
+    end
+    ScrollList.CanvasSize = UDim2.new(0, 0, 0, #Waypoints * 38)
+end
+
+-- إضافة إحداثية
+local function addWaypoint(position)
+    WaypointCount = WaypointCount + 1
+    local id = #Waypoints + 1
+    local name = "إحداثية رقم " .. id
+    
+    local Billboard = Instance.new("BillboardGui")
+    Billboard.AlwaysOnTop = true
+    Billboard.Size = UDim2.new(0, 120, 0, 25)
+    Billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    
+    local Tag = Instance.new("TextLabel")
+    Tag.Size = UDim2.new(1, 0, 1, 0)
+    Tag.BackgroundTransparency = 1
+    Tag.Text = name
+    Tag.TextColor3 = Color3.fromRGB(255, 215, 0)
+    Tag.TextStrokeTransparency = 0
+    Tag.TextSize = 12
+    Tag.Font = Enum.Font.SourceSansBold
+    Tag.Parent = Billboard
+    
+    local Part = Instance.new("Part")
+    Part.Size = Vector3.new(0.5, 0.5, 0.5)
+    Part.Position = position
+    Part.Anchored = true
+    Part.CanCollide = false
+    Part.Color = Color3.fromRGB(255, 215, 0)
+    Part.Parent = workspace
+    Billboard.Parent = Part
+
+    local ItemFrame = Instance.new("Frame")
+    ItemFrame.Size = UDim2.new(0.96, 0, 0, 34)
+    ItemFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+    ItemFrame.LayoutOrder = id
+    ItemFrame.Parent = ScrollList
+    
+    local ItemCorner = Instance.new("UICorner")
+    ItemCorner.CornerRadius = UDim.new(0, 5)
+    ItemCorner.Parent = ItemFrame
+    
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(0.5, -5, 1, 0)
+    NameLabel.Position = UDim2.new(0, 8, 0, 0)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = name
+    NameLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.TextSize = 11
+    NameLabel.Font = Enum.Font.SourceSansBold
+    NameLabel.Parent = ItemFrame
+    
+    local TeleportBtn = Instance.new("TextButton")
+    TeleportBtn.Size = UDim2.new(0.22, 0, 0.7, 0)
+    TeleportBtn.Position = UDim2.new(0.52, 0, 0.15, 0)
+    TeleportBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+    TeleportBtn.Text = "انتقال"
+    TeleportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TeleportBtn.Font = Enum.Font.SourceSansBold
+    TeleportBtn.TextSize = 10
+    TeleportBtn.Parent = ItemFrame
+    
+    local TPCorner = Instance.new("UICorner")
+    TPCorner.CornerRadius = UDim.new(0, 4)
+    TPCorner.Parent = TeleportBtn
+
+    local DeleteBtn = Instance.new("TextButton")
+    DeleteBtn.Size = UDim2.new(0.22, 0, 0.7, 0)
+    DeleteBtn.Position = UDim2.new(0.76, 0, 0.15, 0)
+    DeleteBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    DeleteBtn.Text = "حذف"
+    DeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DeleteBtn.Font = Enum.Font.SourceSansBold
+    DeleteBtn.TextSize = 10
+    DeleteBtn.Parent = ItemFrame
+    
+    local DelCorner = Instance.new("UICorner")
+    DelCorner.CornerRadius = UDim.new(0, 4)
+    DelCorner.Parent = DeleteBtn
+
+    local entry = { Name = name, Pos = position, Part = Part, Frame = ItemFrame, Tag = Tag, NameLabel = NameLabel }
+    table.insert(Waypoints, entry)
+
+    TeleportBtn.MouseButton1Click:Connect(function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(position + Vector3.new(0, 2.5, 0))
+        end
+    end)
+
+    DeleteBtn.MouseButton1Click:Connect(function()
+        Part:Destroy()
+        ItemFrame:Destroy()
+        for i, v in ipairs(Waypoints) do
+            if v == entry then
+                table.remove(Waypoints, i)
+                break
+            end
+        end
+        refreshIndices()
+    end)
+
+    refreshIndices()
+end
+
+-- أزرار الإضافة
+AddBtn.MouseButton1Click:Connect(function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        addWaypoint(LocalPlayer.Character.HumanoidRootPart.Position)
+    end
+end)
+
+ClickAddBtn.MouseButton1Click:Connect(function()
+    ClickToWay = not ClickToWay
+    ClickAddBtn.BackgroundColor3 = ClickToWay and Color3.fromRGB(35, 140, 70) or Color3.fromRGB(130, 60, 200)
+end)
+
+Mouse.Button1Down:Connect(function()
+    if ClickToWay and Mouse.Target then
+        addWaypoint(Mouse.Hit.Position)
+        ClickToWay = false
+        ClickAddBtn.BackgroundColor3 = Color3.fromRGB(130, 60, 200)
+    end
+end)
+
+-- نسخ الإحداثيات بصيغة Vector3.new
+CopyBtn.MouseButton1Click:Connect(function()
+    if #Waypoints == 0 then return end
+    local textResult = "local Waypoints = {\n"
+    for i, wp in ipairs(Waypoints) do
+        local p = wp.Pos
+        textResult = textResult .. string.format("    Vector3.new(%.2f, %.2f, %.2f),\n", p.X, p.Y, p.Z)
+    end
+    textResult = textResult .. "}"
+    
+    setclipboard(textResult)
+    CopyBtn.Text = "✅ تم نسخ Vector3!"
+    task.wait(1.5)
+    CopyBtn.Text = "📋 نسخ بصيغة Vector3"
+end)
+
+-- اختراق الجدران (NoClip)
+NoclipBtn.MouseButton1Click:Connect(function()
+    NoClip = not NoClip
+    NoclipBtn.BackgroundColor3 = NoClip and Color3.fromRGB(35, 140, 70) or Color3.fromRGB(55, 55, 65)
+end)
+
+RunService.Stepped:Connect(function()
+    if NoClip and LocalPlayer.Character then
+        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- الطيران الحر (Fly)
+FlyBtn.MouseButton1Click:Connect(function()
+    Flying = not Flying
+    FlyBtn.BackgroundColor3 = Flying and Color3.fromRGB(35, 140, 70) or Color3.fromRGB(55, 55, 65)
+    
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = char.HumanoidRootPart
+    
+    if Flying then
+        local bv = Instance.new("BodyVelocity")
+        bv.Name = "FlyVel"
+        bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+        bv.Velocity = Vector3.zero
+        bv.Parent = hrp
+        
+        local bg = Instance.new("BodyGyro")
+        bg.Name = "FlyGyro"
+        bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+        bg.CFrame = hrp.CFrame
+        bg.Parent = hrp
+        
+        task.spawn(function()
+            while Flying and char and hrp:FindFirstChild("FlyVel") do
+                local cam = workspace.CurrentCamera
+                local moveDir = Vector3.zero
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                
+                hrp.FlyVel.Velocity = moveDir * FlySpeed
+                hrp.FlyGyro.CFrame = cam.CFrame
+                RunService.RenderStepped:Wait()
+            end
+            if hrp:FindFirstChild("FlyVel") then hrp.FlyVel:Destroy() end
+            if hrp:FindFirstChild("FlyGyro") then hrp.FlyGyro:Destroy() end
+        end)
+    end
+end)
+
+-- حركة المسار التلقائية
+PathBtn.MouseButton1Click:Connect(function()
+    PathTesting = not PathTesting
+    PathBtn.BackgroundColor3 = PathTesting and Color3.fromRGB(35, 140, 70) or Color3.fromRGB(55, 55, 65)
+    
+    if PathTesting then
+        task.spawn(function()
+            while PathTesting do
+                if #Waypoints == 0 then
+                    task.wait(0.5)
+                else
+                    for i, wp in ipairs(Waypoints) do
+                        if not PathTesting then break end
+                        
+                        local char = LocalPlayer.Character
+                        if char and char:FindFirstChild("HumanoidRootPart") then
+                            local hrp = char.HumanoidRootPart
+                            local targetPos = wp.Pos + Vector3.new(0, 2.5, 0)
+                            
+                            while PathTesting and (hrp.Position - targetPos).Magnitude > 3 do
+                                local direction = (targetPos - hrp.Position).Unit
+                                hrp.CFrame = CFrame.new(hrp.Position + direction * (PathSpeed * 0.03))
+                                RunService.RenderStepped:Wait()
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
